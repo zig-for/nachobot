@@ -36,6 +36,7 @@ class Game:
 	game_id: int
 	args: list
 	players: set
+	server: None
 	def __init__(self, game_id, args):
 		self.game_id = game_id
 		self.args = args
@@ -90,7 +91,7 @@ async def on_message(message):
 
 
 			return await print_chan(chan, 'creating game')
-		elif content[0] == 'start':
+		elif content[0] == 'start' or content[0] == 'begin':
 			game = server_games.by_user[message.author]
 
 			if not game:
@@ -128,7 +129,8 @@ async def on_message(message):
 			loop = asyncio.get_event_loop()
 			multi_args = MultiServer.parse_arguments([])
 			multi_args.multidata = multidata
-			asyncio.ensure_future(MultiServer.main(multi_args))
+			game.server = asyncio.ensure_future(MultiServer.main(multi_args))
+
 			return
 
 		elif content[0] == 'end':
@@ -148,6 +150,8 @@ async def on_message(message):
 						await chan.send(file=discord.File(os.path.join(root, name)))
 
 
+			game.server.cancel()
+			
 			return await print_chan(chan, 'end game')
 		elif content[0] == 'join':
 			if len(server_games.by_user) == 1:
