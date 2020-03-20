@@ -1,11 +1,13 @@
 import sys
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '../ALttPEntranceRandomizer')
+import asyncio
 import glob, os, time
 
 import EntranceRandomizer as ALTTPEntranceRandomizer
 import Main as ALTTPMain
 import Utils as ALTTPUtils
+import MultiServer
 from pathlib import Path
 
 import discord
@@ -42,9 +44,14 @@ class Game:
 @client.event
 async def on_ready():
 	print('We have logged in as {0.user}'.format(client))
-	
+
 async def print_chan(channel, message):
 	await channel.send(message)
+
+async def start_server():
+	print('server start')
+	sleep(10.0)
+	print('server stop')
 
 @client.event
 async def on_message(message):
@@ -107,11 +114,22 @@ async def on_message(message):
 
 			await print_chan(chan, 'starting...')
 
+			multidata = None
+
 			for root, dirs, files in os.walk(str(path)):
 				for name in files:
 					if name.endswith('.sfc'):
 						await chan.send(file=discord.File(os.path.join(root, name)))
+					elif name.endswith('_multidata'):
+						multidata = os.path.join(root, name)
 
+
+
+			loop = asyncio.get_event_loop()
+
+			multi_args = MultiServer.get_parser().parse_args([])
+			multi_args.multidata = multidata
+			asyncio.ensure_future(MultiServer.main_inner(multi_args))
 			return
 
 		elif content[0] == 'end':
