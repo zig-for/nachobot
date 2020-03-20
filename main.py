@@ -94,28 +94,25 @@ async def on_message(message):
 			if not game:
 				return await print_chan(chan, 'Error: You don\'t have a game here!')
 			
-			parser = ALTTPEntranceRandomizer.make_parser()
-			args = parser.parse_args(game.args)
-			
-			args.create_spoiler = True
-			args.rom = './Zelda no Densetsu - Kamigami no Triforce (J) (V1.0).smc'
-
-			args.names = ', '.join(game.players)
-			
+			# output dir
 			path = OUTPUT_ROOT / str(game.game_id)
-
-			args.outputpath = path
-
 			ALTTPUtils.output_path.cached_path = path
-
 			path.mkdir(parents=True, exist_ok=True)
 
+			# setup args
+			args = ALTTPEntranceRandomizer.parse_arguments(game.args)
+			args.create_spoiler = True
+			args.rom = './Zelda no Densetsu - Kamigami no Triforce (J) (V1.0).smc'
+			args.names = ','.join(game.players)
+			args.outputpath = path
+
+			# generate roms
 			ALTTPMain.main(args)
 
 			await print_chan(chan, 'starting...')
 
 			multidata = None
-
+			# upload roms and find multidata
 			for root, dirs, files in os.walk(str(path)):
 				for name in files:
 					if name.endswith('.sfc'):
@@ -123,13 +120,11 @@ async def on_message(message):
 					elif name.endswith('_multidata'):
 						multidata = os.path.join(root, name)
 
-
-
+			#start server
 			loop = asyncio.get_event_loop()
-
-			multi_args = MultiServer.get_parser().parse_args([])
+			multi_args = MultiServer.parse_arguments([])
 			multi_args.multidata = multidata
-			asyncio.ensure_future(MultiServer.main_inner(multi_args))
+			asyncio.ensure_future(MultiServer.main(multi_args))
 			return
 
 		elif content[0] == 'end':
@@ -142,7 +137,6 @@ async def on_message(message):
 			server_games.by_id[game.game_id] = None
 
 			path = OUTPUT_ROOT / str(game.game_id)
-
 
 			for root, dirs, files in os.walk(str(path)):
 				for name in files:
