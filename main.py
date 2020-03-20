@@ -54,14 +54,26 @@ async def start_server():
 	sleep(10.0)
 	print('server stop')
 
+
+LAST_CHANNEL = None
+
+def log_item(a, b, i):
+	global LAST_CHANNEL
+	asyncio.ensure_future(print_chan(LAST_CHANNEL, a + ' found ' + b + '\'s ' + i))
+
+
+
 @client.event
 async def on_message(message):
 	if message.author == client.user:
 		return
 
 	if message.content.startswith('^'):
+
 		content = message.content[1:].split()
 		chan = message.channel
+		global LAST_CHANNEL
+		LAST_CHANNEL = chan
 
 		if not content:
 			return
@@ -109,8 +121,6 @@ async def on_message(message):
 			args.names = ','.join(game.players)
 			args.outputpath = path
 
-
-
 			# generate roms
 			ALTTPMain.main(args)
 
@@ -129,8 +139,9 @@ async def on_message(message):
 			loop = asyncio.get_event_loop()
 			multi_args = MultiServer.parse_arguments([])
 			multi_args.multidata = multidata
+			multi_args.loglevel = 'info'
 			game.server = asyncio.ensure_future(MultiServer.main(multi_args))
-
+			MultiServer.global_item_found_cb = log_item
 			return
 
 		elif content[0] == 'end':
@@ -151,7 +162,7 @@ async def on_message(message):
 
 
 			game.server.cancel()
-			
+
 			return await print_chan(chan, 'end game')
 		elif content[0] == 'join':
 			if len(server_games.by_user) == 1:
