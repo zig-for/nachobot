@@ -86,7 +86,7 @@ async def on_message(message):
 			server_games.by_id[game.game_id] = game
 			
 			game.players.add(message.author.name)
-			game.players.add('FAKE_PLAYER')
+			# game.players.add('FAKE_PLAYER')
 
 
 			return await print_chan(chan, 'creating game')
