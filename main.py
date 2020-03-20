@@ -72,7 +72,7 @@ async def on_message(message):
 
 		print(content)
 
-		if content[0] == 'open':
+		if content[0] == 'create':
 			game = server_games.by_user.get(message.author)
 
 			if game:
@@ -86,6 +86,8 @@ async def on_message(message):
 			server_games.by_id[game.game_id] = game
 			
 			game.players.add(message.author.name)
+			game.players.add('FAKE_PLAYER')
+
 
 			return await print_chan(chan, 'creating game')
 		elif content[0] == 'start':
@@ -100,16 +102,18 @@ async def on_message(message):
 			path.mkdir(parents=True, exist_ok=True)
 
 			# setup args
-			args = ALTTPEntranceRandomizer.parse_arguments(game.args)
+			args = ALTTPEntranceRandomizer.parse_arguments(game.args + ["--multi", str(len(game.players))])
 			args.create_spoiler = True
 			args.rom = './Zelda no Densetsu - Kamigami no Triforce (J) (V1.0).smc'
 			args.names = ','.join(game.players)
 			args.outputpath = path
 
+
+
 			# generate roms
 			ALTTPMain.main(args)
 
-			await print_chan(chan, 'starting...')
+			await print_chan(chan, 'starting game with ' + str(args.multi) + ' players')
 
 			multidata = None
 			# upload roms and find multidata
