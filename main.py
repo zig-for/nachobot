@@ -2,7 +2,7 @@ import sys
 # insert at 1, 0 is the script path (or '' in REPL)
 sys.path.insert(1, '../ALttPEntranceRandomizer')
 import asyncio
-import glob, os, time
+import glob, os, shlex, time
 
 import EntranceRandomizer as ALTTPEntranceRandomizer
 import Main as ALTTPMain
@@ -14,6 +14,7 @@ import discord
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+import pickledb
 
 
 OUTPUT_ROOT = Path('./output/' + str(int(time.time())))
@@ -23,6 +24,8 @@ OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 TOKEN_REMOVE_ME = open("SECRET.txt", "r").read()
 
 client = discord.Client()
+
+userdb = pickledb.load('user.db', True)
 
 @dataclass
 class ServerGames:
@@ -61,6 +64,31 @@ def log_item(a, b, i):
 	global LAST_CHANNEL
 	asyncio.ensure_future(print_chan(LAST_CHANNEL, a + ' found ' + b + '\'s ' + i))
 
+def set_user_kv(author, k, v):
+	strid = str(author)
+
+	if not userdb.exists(strid):
+		userdb.dcreate(strid)
+	
+	userdb.dadd(strid, (k,v))
+	
+def get_user_kv(author, k):
+	strid = str(author)
+	if userdb.exists(strid):
+		if userdb.dexists(strid, k):
+			return userdb.dget(strid, k)
+	return None
+
+def get_user_kvs(author):
+	strid = str(author)
+	if userdb.exists(strid):
+		return userdb.dgetall(strid)
+
+def join_game(author, game):
+	game.players.add(author.id)
+
+	if not get_user_kv(author.id, 'name'):
+		set_user_kv(author.id, 'name', author.name)
 
 
 @client.event
@@ -70,7 +98,7 @@ async def on_message(message):
 
 	if message.content.startswith('^'):
 
-		content = message.content[1:].split()
+		content = shlex.split(message.content[1:])
 		chan = message.channel
 		global LAST_CHANNEL
 		LAST_CHANNEL = chan
@@ -86,7 +114,7 @@ async def on_message(message):
 		print(content)
 
 		if content[0] == 'create':
-			game = server_games.by_user.get(message.author)
+			game = server_games.by_user.get(message.author.id)
 
 			if game:
 				return await print_chan(chan, 'Error: You\'re already hosting a game here!')
@@ -95,16 +123,14 @@ async def on_message(message):
 			game = Game(global_game_id, content[1:])
 			global_game_id += 1
 
-			server_games.by_user[message.author] = game
+			server_games.by_user[message.author.id] = game
 			server_games.by_id[game.game_id] = game
-			
-			game.players.add(message.author.name)
-			# game.players.add('FAKE_PLAYER')
 
+			join_game(message.author, game)
 
 			return await print_chan(chan, 'creating game')
 		elif content[0] == 'start' or content[0] == 'begin':
-			game = server_games.by_user[message.author]
+			game = server_games.by_user.get(message.author.id)
 
 			if not game:
 				return await print_chan(chan, 'Error: You don\'t have a game here!')
@@ -118,8 +144,41 @@ async def on_message(message):
 			args = ALTTPEntranceRandomizer.parse_arguments(game.args + ["--multi", str(len(game.players))])
 			args.create_spoiler = True
 			args.rom = './Zelda no Densetsu - Kamigami no Triforce (J) (V1.0).smc'
-			args.names = ','.join(game.players)
+			
 			args.outputpath = path
+
+			index = 1
+
+			names = []
+
+			print(game.players)
+
+			for player_id in game.players:
+				validkeys = ['logic', 'mode', 'swords', 'goal', 'difficulty', 'item_functionality',
+							 'shuffle', 'crystals_ganon', 'crystals_gt', 'openpyramid',
+							 'mapshuffle', 'compassshuffle', 'keyshuffle', 'bigkeyshuffle', 'startinventory',
+							 'retro', 'accessibility', 'hints', 'beemizer',
+							 'shufflebosses', 'shuffleenemies', 'enemy_health', 'enemy_damage', 'shufflepots',
+							 'ow_palettes', 'uw_palettes', 'sprite', 'disablemusic', 'quickswap', 'fastmenu', 'heartcolor', 'heartbeep',
+							 'remote_items']
+
+				user_args = []
+
+				t = get_user_kvs(player_id)
+
+				names.append(t.get('name', "WHERE_IS_YOUR_NAME"))
+
+				print(t)
+				for k in t:
+					if k in validkeys:
+						getattr(args, k)[index] = t[k]
+
+				index += 1
+
+			args.names = ",".join(names)
+
+			print(args)
+			
 
 			# generate roms
 			ALTTPMain.main(args)
@@ -135,6 +194,7 @@ async def on_message(message):
 					elif name.endswith('_multidata'):
 						multidata = os.path.join(root, name)
 
+
 			#start server
 			loop = asyncio.get_event_loop()
 			multi_args = MultiServer.parse_arguments([])
@@ -145,12 +205,12 @@ async def on_message(message):
 			return
 
 		elif content[0] == 'end':
-			game = server_games.by_user[message.author]
+			game = server_games.by_user.get(message.author.id)
 
 			if not game:
 				return await print_chan(chan, 'Error: You don\'t have a game here!')
 
-			server_games.by_user[message.author] = None
+			server_games.by_user[message.author.id] = None
 			server_games.by_id[game.game_id] = None
 
 			path = OUTPUT_ROOT / str(game.game_id)
@@ -166,10 +226,32 @@ async def on_message(message):
 			return await print_chan(chan, 'end game')
 		elif content[0] == 'join':
 			if len(server_games.by_user) == 1:
-				server_games.by_user[list(server_games.by_user)[0]].players.add(message.author.name)
+				join_game(message.author, game)
 				return await print_chan(chan, message.author.name + ' Joined!')
 			else:
 				return await print_chan(chan, 'Error: One game per server right now, sorry.')
+		elif content[0] == 'set':
+			if content[1] == 'user':
+				k = content[2]
+				v = content[3]
+
+				if ' ' in k or ' ' in v:
+					return await print_chan(chan, 'Error: Invalid kv pair.')
+
+				set_user_kv(message.author.id, k, v)
+				print(get_user_kvs(message.author.id))
+				return await print_chan(chan, 'set ' + str(message.author.id) + " " + k + "=" + get_user_kv(message.author.id, k))
+		elif content[0] == 'get':
+			if content[1] == 'user':
+				k = content[2]
+
+				if ' ' in k:
+					return await print_chan(chan, 'Error: Invalid kv pair.')
+
+				v = get_user_kv(message.author.id, k)
+				return await print_chan(chan, 'get ' + str(message.author.id) + " " + k + "=" + v)
+
+
 
 
 
