@@ -153,15 +153,16 @@ async def on_message(message):
 
 			print(game.players)
 
-			for player_id in game.players:
-				validkeys = ['logic', 'mode', 'swords', 'goal', 'difficulty', 'item_functionality',
-							 'shuffle', 'crystals_ganon', 'crystals_gt', 'openpyramid',
-							 'mapshuffle', 'compassshuffle', 'keyshuffle', 'bigkeyshuffle', 'startinventory',
-							 'retro', 'accessibility', 'hints', 'beemizer',
-							 'shufflebosses', 'shuffleenemies', 'enemy_health', 'enemy_damage', 'shufflepots',
-							 'ow_palettes', 'uw_palettes', 'sprite', 'disablemusic', 'quickswap', 'fastmenu', 'heartcolor', 'heartbeep',
-							 'remote_items']
+			validkeys = ['logic', 'mode', 'swords', 'goal', 'difficulty', 'item_functionality',
+						 'shuffle', 'crystals_ganon', 'crystals_gt', 'openpyramid',
+						 'mapshuffle', 'compassshuffle', 'keyshuffle', 'bigkeyshuffle', 'startinventory',
+						 'retro', 'accessibility', 'hints', 'beemizer',
+						 'shufflebosses', 'shuffleenemies', 'enemy_health', 'enemy_damage', 'shufflepots',
+						 'ow_palettes', 'uw_palettes', 'sprite', 'disablemusic', 'quickswap', 'fastmenu', 'heartcolor', 'heartbeep',
+						 'remote_items']
 
+
+			for player_id in game.players:
 				user_args = []
 
 				t = get_user_kvs(player_id)
@@ -226,6 +227,7 @@ async def on_message(message):
 			return await print_chan(chan, 'end game')
 		elif content[0] == 'join':
 			if len(server_games.by_user) == 1:
+				game = server_games.by_user[list(server_games.by_user)[0]]
 				join_game(message.author, game)
 				return await print_chan(chan, message.author.name + ' Joined!')
 			else:
