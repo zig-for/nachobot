@@ -62,7 +62,10 @@ LAST_CHANNEL = None
 
 def log_item(a, b, i):
 	global LAST_CHANNEL
-	asyncio.ensure_future(print_chan(LAST_CHANNEL, a + ' found ' + b + '\'s ' + i))
+	if a == b:
+		asyncio.ensure_future(print_chan(LAST_CHANNEL, a + ' found their own ' + i))
+	else:
+		asyncio.ensure_future(print_chan(LAST_CHANNEL, a + ' found ' + b + '\'s ' + i))
 
 def set_user_kv(author, k, v):
 	strid = str(author)
