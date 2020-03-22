@@ -191,7 +191,8 @@ async def on_message(message):
 								await print_chan(chan, 'Invalid user setting ' + k + "=" + t[k] + ' for ' + name)
 						else:
 							try:
-								getattr(args, k)[index] = validkeys[k](t[k])
+								# getattr(args, k)[index] = validkeys[k](t[k])
+								getattr(args, k)[index] = t[k]
 							except:
 								await print_chan(chan, 'Invalid user setting ' + k + "=" + t[k] + ' for ' + name)
 
@@ -258,7 +259,7 @@ async def on_message(message):
 				k = content[2]
 				v = content[3]
 
-				if ' ' in k or ' ' in v:
+				if ' ' in k:
 					return await print_chan(chan, 'Error: Invalid kv pair.')
 
 				set_user_kv(message.author.id, k, v)
