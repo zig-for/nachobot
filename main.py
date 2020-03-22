@@ -162,17 +162,38 @@ async def on_message(message):
 						 'remote_items']
 
 
+
+			validkeys = { key : type(getattr(args, key)[1]) for key in validkeys }
+
+
 			for player_id in game.players:
 				user_args = []
 
 				t = get_user_kvs(player_id)
 
-				names.append(t.get('name', "WHERE_IS_YOUR_NAME"))
+				name = t.get('name', "WHERE_IS_YOUR_NAME")
+
+				names.append(name)
 
 				print(t)
 				for k in t:
 					if k in validkeys:
-						getattr(args, k)[index] = t[k]
+						
+						if validkeys[k] == bool:
+							s = t[k].lower()
+							print(s)
+							print(t[k])
+							if s == "true":
+								getattr(args, k)[index] = True
+							elif s == "false":
+								getattr(args, k)[index] = False
+							else:
+								await print_chan(chan, 'Invalid user setting ' + k + "=" + t[k] + ' for ' + name)
+						else:
+							try:
+								getattr(args, k)[index] = validkeys[k](t[k])
+							except:
+								await print_chan(chan, 'Invalid user setting ' + k + "=" + t[k] + ' for ' + name)
 
 				index += 1
 
