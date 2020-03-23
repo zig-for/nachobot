@@ -14,11 +14,14 @@ from pathlib import Path
 
 import discord
 
+import aiohttp
 from collections import defaultdict
 from dataclasses import dataclass, field
 import pickledb
 
 from aiohttp import web
+
+import alttphttp
 
 OUTPUT_ROOT = Path('./output/' + str(int(time.time())))
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
@@ -42,12 +45,12 @@ class Game:
 	game_id: int
 	args: list
 	players: set
-	server: None
+	token: None
 	def __init__(self, game_id, args):
 		self.game_id = game_id
 		self.args = args
 		self.players = set()
-
+		self.token = None
 
 async def setup_web():
 
@@ -60,24 +63,28 @@ async def setup_web():
 	site = web.TCPSite(runner, 'localhost', 5001)
 	await site.start()
 
-async def start_game(message, filename):
+
+async def start_game(message, filename, game):
 	chan = message.channel
 
 	url = 'http://localhost:5001/' + filename
 
 	data = {
-		'multidata_url': message.attachments[0].url,
+		'multidata_url': url,
 		'admin': message.author.id,
 		'meta': {
 			'channel': None if isinstance(message.channel, discord.DMChannel) else message.channel.name,
 			'guild': message.guild.name if message.guild else None,
-			'multidata_url': filename,
+			'multidata_url': url,
 			'name': f'{message.author.name}#{message.author.discriminator}'
 		}
 	}
+
+	print(data)
+
 	try:
-		multiworld = await http.request_json_post(url='http://localhost:5000/game', data=data, returntype='json')
-	except ClientResponseError as err:
+		multiworld = await alttphttp.request_json_post(url='http://localhost:5000/game', data=data, returntype='json')
+	except aiohttp.ClientResponseError as err:
 		#raise SahasrahBotException('Unable to generate host using the provided multidata.  Ensure you\'re using the latest version of the mutiworld (<https://github.com/Bonta0/ALttPEntranceRandomizer/tree/multiworld_31>)!') from err
 		await print_chan(chan, 'Unable to generate host using the provided multidata.  Ensure you\'re using the latest version of the mutiworld.')
 		return
@@ -86,7 +93,30 @@ async def start_game(message, filename):
 		await print_chan(chan, 'Unable to generate host using the provided multidata')
 		#raise SahasrahBotException(f"Unable to generate host using the provided multidata.  {multiworld.get('description', '')}")
 		return 
-	await print_chan(chan, 'started!') # ctx.send(embed=make_embed(multiworld))
+
+	game.token = multiworld['token'] 
+
+	await print_chan(chan, 'started! - please join `hylianmulti.world:'+str(multiworld['port'])+'`')
+
+
+async def end_game(message, game):
+	await send_game_command(message, game.token, '/exit')
+
+async def send_game_command(message, token, command):
+	result = await alttphttp.request_generic(url=f'http://localhost:5000/game/{token}', method='get', returntype='json')
+
+	if not result['admin'] == message.author.id:
+		#raise SahasrahBotException('You must be the creater of the game to send messages to it.')
+		await print_chan(message.channel, 'Error: You must be the creater of the game to send messages to it.')
+		return
+
+	data = {'msg': command}	
+	
+	response = await alttphttp.request_json_put(url=f'http://localhost:5000/game/{token}/msg', data=data, returntype='json')
+
+	if 'resp' in response and response['resp'] is not None:
+		await message.channel.send(response['resp'])
+
 
 
 @client.event
@@ -179,7 +209,11 @@ async def on_message(message):
 
 			if not game:
 				return await print_chan(chan, 'Error: You don\'t have a game here!')
-			
+		
+			if game.token:
+				await print_chan(chan, 'your game is already running!')
+				return
+
 			# output dir
 			path = OUTPUT_ROOT / str(game.game_id)
 			ALTTPUtils.output_path.cached_path = path
@@ -245,8 +279,6 @@ async def on_message(message):
 
 			args.names = ",".join(names)
 
-			print(args)
-			
 
 			# generate roms
 			ALTTPMain.main(args)
@@ -262,8 +294,8 @@ async def on_message(message):
 					elif name.endswith('_multidata'):
 						multidata = os.path.join(root, name)
 
-			await print_chan(multidata)
-			start_game(msg, multidata)
+			await print_chan(chan, multidata)
+			await start_game(message, multidata, game)
 
 			#start server
 			if False:
@@ -281,6 +313,7 @@ async def on_message(message):
 			if not game:
 				return await print_chan(chan, 'Error: You don\'t have a game here!')
 
+			await print_chan(chan, 'Game Over!')
 			server_games.by_user[message.author.id] = None
 			server_games.by_id[game.game_id] = None
 
@@ -292,9 +325,9 @@ async def on_message(message):
 						await chan.send(file=discord.File(os.path.join(root, name)))
 
 
-			game.server.cancel()
-
-			return await print_chan(chan, 'end game')
+			# game.server.cancel()
+			await end_game(message, game)
+			return 
 		elif content[0] == 'join':
 			if len(server_games.by_user) == 1:
 				game = server_games.by_user[list(server_games.by_user)[0]]
