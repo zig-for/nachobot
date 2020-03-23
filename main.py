@@ -317,7 +317,7 @@ async def on_message(message):
 				multi_args.multidata = multidata
 				multi_args.loglevel = 'info'
 				game.server = asyncio.ensure_future(MultiServer.main(multi_args))
-				MultiServer.global_item_found_cb = log_item
+				# MultiServer.global_item_found_cb = log_item
 			return
 
 		elif content[0] == 'end':
