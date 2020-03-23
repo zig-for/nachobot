@@ -18,6 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 import pickledb
 
+from aiohttp import web
 
 OUTPUT_ROOT = Path('./output/' + str(int(time.time())))
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
@@ -47,17 +48,56 @@ class Game:
 		self.args = args
 		self.players = set()
 
+
+async def setup_web():
+
+	app = web.Application()
+
+	app.add_routes([web.static('/output', './output')])
+
+	runner = web.AppRunner(app)
+	await runner.setup()
+	site = web.TCPSite(runner, 'localhost', 5001)
+	await site.start()
+
+async def start_game(message, filename):
+	chan = message.channel
+
+	url = 'http://localhost:5001/' + filename
+
+	data = {
+		'multidata_url': message.attachments[0].url,
+		'admin': message.author.id,
+		'meta': {
+			'channel': None if isinstance(message.channel, discord.DMChannel) else message.channel.name,
+			'guild': message.guild.name if message.guild else None,
+			'multidata_url': filename,
+			'name': f'{message.author.name}#{message.author.discriminator}'
+		}
+	}
+	try:
+		multiworld = await http.request_json_post(url='http://localhost:5000/game', data=data, returntype='json')
+	except ClientResponseError as err:
+		#raise SahasrahBotException('Unable to generate host using the provided multidata.  Ensure you\'re using the latest version of the mutiworld (<https://github.com/Bonta0/ALttPEntranceRandomizer/tree/multiworld_31>)!') from err
+		await print_chan(chan, 'Unable to generate host using the provided multidata.  Ensure you\'re using the latest version of the mutiworld.')
+		return
+
+	if not multiworld.get('success', True):
+		await print_chan(chan, 'Unable to generate host using the provided multidata')
+		#raise SahasrahBotException(f"Unable to generate host using the provided multidata.  {multiworld.get('description', '')}")
+		return 
+	await print_chan(chan, 'started!') # ctx.send(embed=make_embed(multiworld))
+
+
 @client.event
 async def on_ready():
 	print('We have logged in as {0.user}'.format(client))
 
+	await setup_web()
+
 async def print_chan(channel, message):
 	await channel.send(message)
 
-async def start_server():
-	print('server start')
-	sleep(10.0)
-	print('server stop')
 
 
 LAST_CHANNEL = None
@@ -222,14 +262,17 @@ async def on_message(message):
 					elif name.endswith('_multidata'):
 						multidata = os.path.join(root, name)
 
+			await print_chan(multidata)
+			start_game(msg, multidata)
 
 			#start server
-			loop = asyncio.get_event_loop()
-			multi_args = MultiServer.parse_args()
-			multi_args.multidata = multidata
-			multi_args.loglevel = 'info'
-			game.server = asyncio.ensure_future(MultiServer.main(multi_args))
-			MultiServer.global_item_found_cb = log_item
+			if False:
+				loop = asyncio.get_event_loop()
+				multi_args = MultiServer.parse_args()
+				multi_args.multidata = multidata
+				multi_args.loglevel = 'info'
+				game.server = asyncio.ensure_future(MultiServer.main(multi_args))
+				MultiServer.global_item_found_cb = log_item
 			return
 
 		elif content[0] == 'end':
@@ -283,5 +326,5 @@ async def on_message(message):
 
 
 
-
 client.run(TOKEN_REMOVE_ME)
+
