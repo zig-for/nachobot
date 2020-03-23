@@ -22,7 +22,7 @@ import pickledb
 from aiohttp import web
 
 import alttphttp
-
+import queue
 OUTPUT_ROOT = Path('./output/' + str(int(time.time())))
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -46,11 +46,21 @@ class Game:
 	args: list
 	players: set
 	token: None
+	address: str
+	info_box: None
+	goal: str
+	log: list
 	def __init__(self, game_id, args):
 		self.game_id = game_id
 		self.args = args
 		self.players = set()
 		self.token = None
+		self.address = ''
+		self.info_box = None
+		self.goal = ''
+		self.log = ['']*10
+	def log_message(self, msg):
+		self.log = self.log[:-1] + [msg]
 
 async def setup_web():
 
@@ -85,7 +95,7 @@ async def start_game(message, filename, game):
 	try:
 		multiworld = await alttphttp.request_json_post(url='http://localhost:5000/game', data=data, returntype='json')
 	except aiohttp.ClientResponseError as err:
-		#raise SahasrahBotException('Unable to generate host using the provided multidata.  Ensure you\'re using the latest version of the mutiworld (<https://github.com/Bonta0/ALttPEntranceRandomizer/tree/multiworld_31>)!') from err
+		#raise SahasrahBotException('Unable to generate host using the provided multidata.	Ensure you\'re using the latest version of the mutiworld (<https://github.com/Bonta0/ALttPEntranceRandomizer/tree/multiworld_31>)!') from err
 		await print_chan(chan, 'Unable to generate host using the provided multidata.  Ensure you\'re using the latest version of the mutiworld.')
 		return
 
@@ -95,8 +105,10 @@ async def start_game(message, filename, game):
 		return 
 
 	game.token = multiworld['token'] 
+	game.address = 'hylianmulti.world:'+str(multiworld['port'])
+	await print_chan(chan, 'started! - please join ' + game.address)
 
-	await print_chan(chan, 'started! - please join `hylianmulti.world:'+str(multiworld['port'])+'`')
+	game.info_box = await chan.send(embed=make_embed(message.channel.guild, game))
 
 
 async def end_game(message, game):
@@ -230,7 +242,6 @@ async def on_message(message):
 
 			names = []
 
-			print(game.players)
 
 			validkeys = ['logic', 'mode', 'swords', 'goal', 'difficulty', 'item_functionality',
 						 'shuffle', 'crystals_ganon', 'crystals_gt', 'openpyramid',
@@ -283,6 +294,8 @@ async def on_message(message):
 			# generate roms
 			ALTTPMain.main(args)
 
+			game.goal = args.goal
+			game.log_message('Game started!')
 			await print_chan(chan, 'starting game with ' + str(args.multi) + ' players')
 
 			multidata = None
@@ -357,7 +370,30 @@ async def on_message(message):
 				return await print_chan(chan, 'get ' + str(message.author.id) + " " + k + "=" + v)
 
 
+def make_embed(server, game):
+	embed = discord.Embed(
+				title='MultiWorld Game',
+				description=f'{game.goal[1]}',
+				color=discord.Color.green()
+			)
+	embed.add_field(name="Host", value=f"{game.address}", inline=False)
+	nacho = discord.utils.get(server.emojis, name='NachoHD')
+	bullet = u'\u2022'
+	for idx, player in enumerate(game.players, start=1):
+		name = get_user_kv(player, 'name')
 
+		if game.goal[idx] == 'triforcehunt':
+			nachoCount = 0
+			desc = f'{nachoCount}/30 {nacho}'
+		else:
+			desc = game.goal[idx]
+
+		embed.add_field(name=f'{name}', value=f'{desc}')
+
+	log = '\n'.join([bullet + ' ' + game.log[i] for i in range(1,10)])
+	embed.add_field(name='Log:', value=f'{log}',inline=False)
+
+	return embed
 
 client.run(TOKEN_REMOVE_ME)
 
