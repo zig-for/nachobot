@@ -5,6 +5,8 @@ import asyncio
 import glob, os, shlex, time
 
 import EntranceRandomizer as ALTTPEntranceRandomizer
+import Utils as ALTTPUtils
+ALTTPUtils.local_path.cached_path = '../ALttPEntranceRandomizer'
 import Main as ALTTPMain
 import Utils as ALTTPUtils
 import MultiServer
@@ -223,7 +225,7 @@ async def on_message(message):
 
 			#start server
 			loop = asyncio.get_event_loop()
-			multi_args = MultiServer.parse_arguments([])
+			multi_args = MultiServer.parse_args()
 			multi_args.multidata = multidata
 			multi_args.loglevel = 'info'
 			game.server = asyncio.ensure_future(MultiServer.main(multi_args))
