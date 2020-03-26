@@ -33,6 +33,8 @@ OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 TOKEN_REMOVE_ME = open("SECRET.txt", "r").read()
 
 client = discord.Client()
+nachobot_guild = None
+nachobot_emojis = {}
 
 userdb = pickledb.load('user.db', True)
 
@@ -46,6 +48,13 @@ games_by_server = defaultdict(ServerGames)
 games_by_token = {}
 
 global_game_id = 0
+
+
+@dataclass
+class PlayerInfo:
+	sword_level: int = 0
+	mail_level: int = 0
+	shield_level: int = 0
 
 class Game:
 	game_id: int
@@ -67,7 +76,8 @@ class Game:
 		self.log = ['']*10
 		self.goal_count = defaultdict(int)
 		self.found_items = {}
-
+		self.heart_count = defaultdict(lambda: 3 * 4)
+		self.player_info = defaultdict(PlayerInfo) 
 	def log_message(self, msg):
 		self.log = self.log[1:] + [msg] 
 
@@ -144,7 +154,11 @@ async def send_game_command(message, token, command):
 @client.event
 async def on_ready():
 	print('We have logged in as {0.user}'.format(client))
-
+	global nachobot_guild
+	global nachobot_emojis
+	nachobot_guild = await client.fetch_guild(675536369686413312)
+	nachobot_emojis = {e.name:e for e in await nachobot_guild.fetch_emojis()}
+	print(nachobot_emojis.keys())
 	await setup_web()
 
 async def print_chan(channel, message):
@@ -175,8 +189,21 @@ async def log_item(token, a, a_id, b, b_id, i, l, l_id):
 
 		game.log_message(msg)
 
+		player_info = game.player_info[b_id[1]]
+
 		if i == "Triforce Piece":
 			game.goal_count[b_id[1]] = game.goal_count[b_id[1]] + 1
+		elif "Heart Container" in i:
+			game.heart_count[b_id[1]] += 4
+		elif i == "Piece of Heart":
+			game.heart_count[b_id[1]] += 1
+		# TODO: this doesn't deal with being given a specific level yet
+		elif i == "Progressive Sword":
+			player_info.sword_level += 1
+		elif i == "Progressive Shield":
+			player_info.shield_level += 1
+		elif i == "Progressive Armor": 
+			player_info.mail_level += 1
 
 		await game.info_box.edit(embed=make_embed(game.info_box.channel.guild, game))
 
@@ -412,6 +439,7 @@ async def on_message(message):
 				return await print_chan(chan, 'get ' + str(message.author.id) + " " + k + "=" + v)
 
 
+
 def make_embed(server, game):
 	embed = discord.Embed(
 				title='MultiWorld Game',
@@ -421,14 +449,38 @@ def make_embed(server, game):
 	embed.add_field(name="Host", value=f"{game.address}", inline=False)
 	nacho = discord.utils.get(server.emojis, name='NachoHD')
 	bullet = u'\u2022'
+	hearts = [discord.utils.get(server.emojis, name=f'heart_container{i}') for i in range(0,5)]
+
 	for idx, player in enumerate(game.players, start=1):
 		name = get_user_kv(player, 'name')
+
+		player_info = game.player_info[idx]
+		
+		levels = (player_info.sword_level, player_info.shield_level, player_info.mail_level)
+
 
 		if game.goal[idx] == 'triforcehunt':
 			nachoCount = game.goal_count[idx] 
 			desc = f'{nachoCount}/20 {nacho}'
 		else:
 			desc = game.goal[idx]
+
+		total_hearts = game.heart_count[idx] // 4
+
+
+		def calc_heart(i):
+			if total_hearts == 1 + i * 2:
+				return 1
+			if total_hearts == 11 + i * 2:
+				return 3
+			if total_hearts >= 12 + i * 2:
+				return 4
+			if total_hearts >= 2 + i * 2:
+				return 2
+			return 0
+
+
+		desc = str(nachobot_emojis[f'link{levels[2]}{levels[0]}{levels[1]}']) + ''.join([str(hearts[calc_heart(i)]) for i in range(0,5)]) + ' ' + desc
 
 		embed.add_field(name=f'{name}', value=f'{desc}')
 
