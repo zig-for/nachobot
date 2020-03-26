@@ -13,6 +13,9 @@ import MultiServer
 from pathlib import Path
 
 import discord
+import discord.ext
+import discord.ext.commands
+import discord.ext.tasks
 
 import aiohttp
 from collections import defaultdict
@@ -20,7 +23,7 @@ from dataclasses import dataclass, field
 import pickledb
 
 from aiohttp import web
-
+import multiprocessing.connection
 import alttphttp
 import queue
 OUTPUT_ROOT = Path('./output/' + str(int(time.time())))
@@ -39,6 +42,9 @@ class ServerGames:
 	by_id: dict = field(default_factory=dict)
 
 games_by_server = defaultdict(ServerGames)
+
+games_by_token = {}
+
 global_game_id = 0
 
 class Game:
@@ -59,8 +65,11 @@ class Game:
 		self.info_box = None
 		self.goal = ''
 		self.log = ['']*10
+		self.goal_count = defaultdict(int)
+		self.found_items = {}
+
 	def log_message(self, msg):
-		self.log = self.log[:-1] + [msg]
+		self.log = self.log[1:] + [msg] 
 
 async def setup_web():
 
@@ -106,7 +115,8 @@ async def start_game(message, filename, game):
 
 	game.token = multiworld['token'] 
 	game.address = 'hylianmulti.world:'+str(multiworld['port'])
-	await print_chan(chan, 'started! - please join ' + game.address)
+
+	games_by_token[game.token] = game
 
 	game.info_box = await chan.send(embed=make_embed(message.channel.guild, game))
 
@@ -144,13 +154,45 @@ async def print_chan(channel, message):
 
 LAST_CHANNEL = None
 
-def log_item(a, b, i):
-	global LAST_CHANNEL
+async def log_item(token, a, a_id, b, b_id, i, l, l_id):
+	if not token in games_by_token:
+		print('no token')
+		return
+	game = games_by_token[token]
+	print('found game')
+	msg = ''
 	if a == b:
-		asyncio.ensure_future(print_chan(LAST_CHANNEL, a + ' found their own ' + i))
+		msg = a + ' found their own ' + i
 	else:
-		asyncio.ensure_future(print_chan(LAST_CHANNEL, a + ' found ' + b + '\'s ' + i))
+		msg = a + ' found ' + b + '\'s ' + i
+	msg += ' in ' + l
+	
+	game.found_items.setdefault(a_id, set())
 
+
+	if l_id not in game.found_items[a_id]:
+		game.found_items[a_id].add(l_id)
+
+		game.log_message(msg)
+
+		if i == "Triforce Piece":
+			game.goal_count[b_id[1]] = game.goal_count[b_id[1]] + 1
+
+		await game.info_box.edit(embed=make_embed(game.info_box.channel.guild, game))
+
+import traceback
+
+async def handle_ms_msg(o):
+	try:
+		print(o)
+		if o['cmd'] == 'found_item':
+			print('found item')
+			d = o['data']
+			await log_item(d['token'], d['player_found'], d['player_found_id'], d['player_owned'], d['player_owned_id'], d['item'], d['location'], d['location_id'])
+		else:
+			print('unknown message ' + o['cmd'])
+	except:
+		traceback.print_exc()
 def set_user_kv(author, k, v):
 	strid = str(author)
 
@@ -383,8 +425,8 @@ def make_embed(server, game):
 		name = get_user_kv(player, 'name')
 
 		if game.goal[idx] == 'triforcehunt':
-			nachoCount = 0
-			desc = f'{nachoCount}/30 {nacho}'
+			nachoCount = game.goal_count[idx] 
+			desc = f'{nachoCount}/20 {nacho}'
 		else:
 			desc = game.goal[idx]
 
@@ -395,5 +437,34 @@ def make_embed(server, game):
 
 	return embed
 
+
+
+class BotConnection(discord.ext.commands.Cog):
+	def __init__(self):
+		self.listener = multiprocessing.connection.Listener('/tmp/nachobot', 'AF_UNIX')
+		self.listener._listener._socket.settimeout(1.0)
+		self.msc = None
+#	@discord.ext.tasks.loop(seconds=0.25)
+	async def poll_connection(self):
+		try:
+			if not self.msc:
+				self.msc = self.listener.accept() 
+			while self.msc.poll():
+				o = self.msc.recv()
+
+				await handle_ms_msg(o)
+		except:
+			self.msc = None
+
+	
+async def update_bot():
+	bot = BotConnection()
+	while True:
+		await bot.poll_connection()
+		await asyncio.sleep(0.1)
+asyncio.get_event_loop().create_task(update_bot())
+
+	
 client.run(TOKEN_REMOVE_ME)
+
 
