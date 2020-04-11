@@ -396,8 +396,8 @@ async def on_message(message):
 				return await print_chan(chan, 'Error: You don\'t have a game here!')
 
 			await print_chan(chan, 'Game Over!')
-			server_games.by_user[message.author.id] = None
-			server_games.by_id[game.game_id] = None
+			del server_games.by_user[message.author.id]
+			del server_games.by_id[game.game_id]
 
 			path = OUTPUT_ROOT / str(game.game_id)
 
@@ -429,7 +429,16 @@ async def on_message(message):
 				print(get_user_kvs(message.author.id))
 				return await print_chan(chan, 'set ' + str(message.author.id) + " " + k + "=" + get_user_kv(message.author.id, k))
 		elif content[0] == 'get':
+			if content[1] == 'games':
+
+				return await print_chan(chan, "Games: " + "\n".join(str(user) for user in server_games.by_user))
 			if content[1] == 'user':
+				if len(content) == 2:
+					kvs = get_user_kvs(message.author.id)
+					
+					msg = [k + "=" + kvs[k] for k in kvs]
+					msg = "\n".join(msg)
+					return await print_chan(chan, msg)
 				k = content[2]
 
 				if ' ' in k:
@@ -482,7 +491,7 @@ def make_embed(server, game):
 
 		desc = str(nachobot_emojis[f'link{levels[2]}{levels[0]}{levels[1]}']) + ''.join([str(hearts[calc_heart(i)]) for i in range(0,5)]) + ' ' + desc
 
-		embed.add_field(name=f'{name}', value=f'{desc}')
+		embed.add_field(name=f'{name}', value=f'{desc}',inline=False)
 
 	log = '\n'.join([bullet + ' ' + game.log[i] for i in range(1,10)])
 	embed.add_field(name='Log:', value=f'{log}',inline=False)
