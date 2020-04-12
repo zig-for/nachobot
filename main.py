@@ -26,6 +26,9 @@ from aiohttp import web
 import multiprocessing.connection
 import alttphttp
 import queue
+
+import re
+
 OUTPUT_ROOT = Path('./output/' + str(int(time.time())))
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -75,7 +78,7 @@ class Game:
 		self.goal = ''
 		self.log = ['']*10
 		self.goal_count = defaultdict(int)
-		self.found_items = {}
+		self.found_items = defaultdict(set)
 		self.heart_count = defaultdict(lambda: 3 * 4)
 		self.player_info = defaultdict(PlayerInfo) 
 	def log_message(self, msg):
@@ -137,6 +140,9 @@ async def end_game(message, game):
 async def send_game_command(message, token, command):
 	result = await alttphttp.request_generic(url=f'http://localhost:5000/game/{token}', method='get', returntype='json')
 
+	if result.get('status_code', None) == 404:
+		return
+
 	if not result['admin'] == message.author.id:
 		#raise SahasrahBotException('You must be the creater of the game to send messages to it.')
 		await print_chan(message.channel, 'Error: You must be the creater of the game to send messages to it.')
@@ -180,9 +186,6 @@ async def log_item(token, a, a_id, b, b_id, i, l, l_id):
 	else:
 		msg = a + ' found ' + b + '\'s ' + i
 	msg += ' in ' + l
-	
-	game.found_items.setdefault(a_id, set())
-
 
 	if l_id not in game.found_items[a_id]:
 		game.found_items[a_id].add(l_id)
@@ -411,12 +414,26 @@ async def on_message(message):
 			await end_game(message, game)
 			return 
 		elif content[0] == 'join':
-			if len(server_games.by_user) == 1:
-				game = server_games.by_user[list(server_games.by_user)[0]]
-				join_game(message.author, game)
-				return await print_chan(chan, message.author.name + ' Joined!')
-			else:
-				return await print_chan(chan, 'Error: One game per server right now, sorry.')
+			if len(server_games.by_user) == 0:
+				return await print_chan(chan, 'Error: there aren\'t any games running right now!') 
+
+			if len(content) == 2:
+				m = re.match('<@!([0-9]*)>', content[1])
+				if not m:
+					return await print_chan(chan, f'Error: {content[1]} isn\'t a valid name!')
+				user = int(m.group(1))
+				if user not in server_games.by_user:
+					return await print_chan(chan, f'Error: {content[1]} isn\'t running a game!')
+				game = server_games.by_user[user]
+
+			if len(content) == 1:
+				if len(server_games.by_user) == 1:
+					game = server_games.by_user[list(server_games.by_user)[0]]
+				else:
+					return await print_chan(chan, 'Error: there are too many games on the server to guess which one you\'re joining!')
+
+			join_game(message.author, game)
+			return await print_chan(chan, message.author.name + ' Joined!')
 		elif content[0] == 'set':
 			if content[1] == 'user':
 				k = content[2]
@@ -491,7 +508,8 @@ def make_embed(server, game):
 
 		desc = str(nachobot_emojis[f'link{levels[2]}{levels[0]}{levels[1]}']) + ''.join([str(hearts[calc_heart(i)]) for i in range(0,5)]) + ' ' + desc
 
-		embed.add_field(name=f'{name}', value=f'{desc}',inline=False)
+		found_count = len(game.found_items[(0, idx)])
+		embed.add_field(name=f'{name} {found_count}/218', value=f'{desc}',inline=False)
 
 	log = '\n'.join([bullet + ' ' + game.log[i] for i in range(1,10)])
 	embed.add_field(name='Log:', value=f'{log}',inline=False)
